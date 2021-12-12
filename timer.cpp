@@ -3,6 +3,7 @@
 //sleep mode if unused for x time, réveil avec un bouton, low power
 //amélioration temps de reponse boutons
 //monitor voltage + indicator
+//faire non blocking delay
 
 #include <Arduino.h>
 #include <GxEPD.h>
@@ -30,7 +31,7 @@
 #define STATE_SHORT 1
 #define STATE_LONG 2
 
-const bool isDebug = true;
+const bool isDebug = false;
 const int MAX_RINGINGS = 7;
 const int ONE_MINUT = 60;
 
@@ -246,10 +247,6 @@ IRAM_ATTR void displayTime(int total){
 	int seconds = total % 60;
 	int hours = minutes / 60;
 	minutes = minutes % 60;
-	
-	/*printDebugInt(hours);
-	printDebugInt(minutes);
-	printDebugInt(seconds);*/
 
 	int nbToRefresh = 0;
 	//refreshSeconds
@@ -294,13 +291,32 @@ IRAM_ATTR void displayTime(int total){
 	}
 }
 
+void playMelody(){
+	int frequence;
+	for ( int i = 0; i < nombreDeNotes ; i++ ) {
+		if(isRinging){					
+			printDebugString("CA SONNE");
+			digitalWrite(LED_PIN, HIGH);
+			frequence = round(note[melodie[i][0]] * 2.0 * (melodie[i][1] - 1));
+			ledcSetup(0, frequence, 12);   
+			ledcWrite(0, 2048);  // rapport cyclique 50%
+			delay(tempo * melodie[i][2] - 50);
+			ledcWrite(0, 0); // rapport cyclique 0% (silence, pour séparer les notes adjacentes)
+			delay(50);
+			digitalWrite(LED_PIN, LOW);
+		}else{
+			digitalWrite(LED_PIN, LOW);
+			ledcWrite(0, 0);
+		}
+	}	
+}
+
 void setup() {
 	if(isDebug){
 		Serial.begin(115200);
 	}	
 	/*** SCREEN ****/	
 	display.init();
-	
 	display.setTextColor(GxEPD_BLACK);
 	display.setRotation(1);
 	display.fillScreen(GxEPD_WHITE);
@@ -324,9 +340,6 @@ void setup() {
 	attachInterrupt(BUTTON_PLUS_FIVE, buttonPlusFivePressed, RISING);
 	
 	digitalWrite(LED_PIN, LOW);
-	
-	delayStart = millis();   // start delay
-	delayRunning = true; // not finished yet
 }
 
 void loop() {
@@ -374,6 +387,8 @@ void loop() {
 	
 	if(isRinging){
 
+		isStarted = false;
+		
 		if(currentRingingsNb >= MAX_RINGINGS){
 			currentRingingsNb = 0;
 			portENTER_CRITICAL_ISR(&timerMuxAlarm);
@@ -382,33 +397,10 @@ void loop() {
 			delayRunning = false;
 		}
 		else{
-			
-			if (delayRunning && ((millis() - delayStart) >= 10000)) {			
-
-				currentRingingsNb++;
-				int frequence;
-				for ( int i = 0; i < nombreDeNotes ; i++ ) {
-					if(isRinging){					
-						printDebugString("CA SONNE");
-						digitalWrite(LED_PIN, HIGH);
-						frequence = round(note[melodie[i][0]] * 2.0 * (melodie[i][1] - 1));
-						ledcSetup(0, frequence, 12);   
-						ledcWrite(0, 2048);  // rapport cyclique 50%
-						delay(tempo * melodie[i][2] - 50);
-						ledcWrite(0, 0); // rapport cyclique 0% (silence, pour séparer les notes adjacentes)
-						delay(50);
-						digitalWrite(LED_PIN, LOW);
-					}else{
-						digitalWrite(LED_PIN, LOW);
-						ledcWrite(0, 0);
-					}
-				}
-			
-			//delayRunning = false;
-			//delay(2000);
-			}
+			currentRingingsNb++;
+			playMelody();
+			delay(2000);
 		}
 	}
-
 		
 }
